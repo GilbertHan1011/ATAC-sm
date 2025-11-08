@@ -1,7 +1,8 @@
 # alignment with botwtie2 & samtools
 rule align:
     input:
-        raw_bams = get_raw_bams,
+        fasta_fwd = os.path.join(result_path, "trimmed", "{sample}_1.fq.gz"),
+        fasta_rev = os.path.join(result_path, "trimmed", "{sample}_2.fq.gz"),
         bowtie2_index = os.path.dirname(config["bowtie2_index"]),
         adapter_fasta = config["adapter_fasta"] if config["adapter_fasta"]!="" else [],
         whitelisted_regions = config["whitelisted_regions"],
@@ -12,16 +13,12 @@ rule align:
         filtered_bai = os.path.join(result_path,"results","{sample}","mapped", "{sample}.filtered.bam.bai"),
         bowtie_log = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.txt'),
         bowtie_met = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.bowtie2.met'),
-        fastp_html = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.fastp.html'),
-        fastp_json = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.fastp.json'),
-        fastp_log = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.fastp.log'),
         samblaster_log = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.samblaster.log'),
         samtools_log = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.samtools.log'),
         samtools_flagstat_log = os.path.join(result_path, 'results', "{sample}", 'mapped', '{sample}.samtools_flagstat.log'),
         stats = os.path.join(result_path, 'results', "{sample}", '{sample}.align.stats.tsv'),
     params:
-        interleaved_in = lambda w: "--interleaved_in" if samples["{}".format(w.sample)]["read_type"] == "paired"  else " ",
-        interleaved = lambda w: "--interleaved" if samples["{}".format(w.sample)]["read_type"] == "paired" else " ",
+        bowtie2_input = lambda w, input: f"-1 {input.fasta_fwd} -2 {input.fasta_rev}" if samples[f"{w.sample}"]["read_type"] == "paired" else f"-U {input.fasta_fwd}",
         filtering = lambda w: "-q 30 -F {flag} -f 2 -L {whitelist}".format(flag=config['SAM_flag'], whitelist=config["whitelisted_regions"]) if samples["{}".format(w.sample)]["read_type"] == "paired" else "-q 30 -F {flag} -L {whitelist}".format(flag=config['SAM_flag'], whitelist=config["whitelisted_regions"]),
         add_mate_tags = lambda w: "--addMateTags" if samples["{}".format(w.sample)]["read_type"] == "paired" else " ",
         adapter_sequence = "-a " + config["adapter_sequence"] if config["adapter_sequence"] !="" else " ",
@@ -44,9 +41,8 @@ rule align:
         
         RG="--rg-id {wildcards.sample} --rg SM:{wildcards.sample} --rg PL:{params.sequencing_platform} --rg CN:{params.sequencing_center}"
 
-        for i in {input.raw_bams}; do samtools fastq $i 2>> "{output.samtools_log}" ; done | \
-            fastp {params.adapter_sequence} {params.adapter_fasta} --stdin {params.interleaved_in} --stdout --html "{output.fastp_html}" --json "{output.fastp_json}" 2> "{output.fastp_log}" | \
-            bowtie2 $RG --very-sensitive --no-discordant -p {threads} --maxins 2000 -x {params.bowtie2_index} --met-file "{output.bowtie_met}" {params.interleaved} - 2> "{output.bowtie_log}" | \
+        bowtie2 $RG --very-sensitive --no-discordant -p {threads} --maxins 2000 -x {params.bowtie2_index} \
+            --met-file "{output.bowtie_met}" {params.bowtie2_input} 2> "{output.bowtie_log}" | \
             samblaster {params.add_mate_tags} 2> "{output.samblaster_log}" | \
             samtools sort -o "{output.bam}" - 2>> "{output.samtools_log}";
         

@@ -139,3 +139,4 @@ dmypy.json
 .pyre/
 
 snakejob_conductor.sh
+config/anno*

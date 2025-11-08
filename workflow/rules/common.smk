@@ -1,6 +1,7 @@
 
-def get_raw_bams(wildcards):
-    return annot.loc[wildcards.sample, "bam_file"]
+def get_units_fastqs(wildcards):
+    u = annot.loc[wildcards.sample]
+    return [u["fq1"], u["fq2"]]
 
 def get_quantifications(wildcards):
 
