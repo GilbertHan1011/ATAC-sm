@@ -6,6 +6,7 @@ threads: 2
 ##### GENERAL #####
 project_name: macrophage_atac # name of the project/dataset
 result_path: /data2/litian/macrophage/process/20251109_atac_run2/ # path to the output folder
+#result_path: /data2/litian/macrophage/process/20251109_atac_test_bowtie/
 annotation: /data2/litian/macrophage/script/atacseq_pipeline/config/anno_sample.csv # path to annotation file, specified in config/README.md
 #annotation: /data2/litian/macrophage/script/atacseq_pipeline/config/annotation.csv
 ##### PROCESSING #####
@@ -13,9 +14,18 @@ annotation: /data2/litian/macrophage/script/atacseq_pipeline/config/anno_sample.
 # genome in the project
 genome: hg38
 
+# Alignment method: "bowtie2" or "bwa-mem2"
+aligner: bwa-mem2  # choose alignment method: "bowtie2" or "bwa-mem2"
+
 # bowtie2 parameters PL and CN for read group information (RG)
 sequencing_platform: illumina
 local: true # whether to use local or end-to-end mode
+
+# BWA MEM parameters
+bwa_mem2_path: /data/Public/BWA_MEM2_index/GRCh38  # path to bwa-mem2 index directory (if null, uses bwa and requires bwa_index rule)
+bwa_min_score: null  # minimum score for BWA MEM alignment (null to disable)
+bwa_args: ""  # additional BWA MEM arguments
+bwa_threads: null  # BWA threads (null to use default threads setting)
 
 ##### REPORT #####
 

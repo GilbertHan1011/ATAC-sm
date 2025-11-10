@@ -38,9 +38,9 @@ rule trim_galore_pe:
         get_units_fastqs,
     output:
         fasta_fwd=temp(os.path.join(result_path,"trimmed","{sample_run}_1.fq.gz")),
-        report_fwd=temp(os.path.join(result_path,"trimmed","{sample_run}_1._trimming_report.txt")),
+        report_fwd=os.path.join(result_path,"trimmed","{sample_run}_1._trimming_report.txt"),
         fasta_rev=temp(os.path.join(result_path,"trimmed","{sample_run}_2.fq.gz")),
-        report_rev=temp(os.path.join(result_path,"trimmed","{sample_run}_2._trimming_report.txt")),
+        report_rev=os.path.join(result_path,"trimmed","{sample_run}_2._trimming_report.txt"),
     threads: 2
     log:
         "logs/trim_galore/{sample_run}.log"
@@ -97,7 +97,7 @@ rule ataqv:
     log:
         "logs/ataqv/{sample}.log"
     conda:
-        "/data2/litian/macrophage/script/atacseq_pipeline/.snakemake/conda/22ecf29b8590ba142cad5ef551bfa62e_"
+        "../envs/ataqv.yaml"
     threads: config.get("ataqv_threads", 2)
     shell:
         """
@@ -125,7 +125,7 @@ rule mkarv:
     log:
         "logs/mkarv/mkarv.log"
     conda:
-        "/data2/litian/macrophage/script/atacseq_pipeline/.snakemake/conda/22ecf29b8590ba142cad5ef551bfa62e_"
+        "../envs/ataqv.yaml"
     threads: config.get("mkarv_threads", 2)
     shell:
         """

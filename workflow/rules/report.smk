@@ -1,10 +1,20 @@
 
+aligner = config.get("aligner", "bowtie2")
+_ALIGNER_LOG_SUFFIX = "txt" if aligner == "bowtie2" else "bwa.log"
+
+
 rule symlink_stats:
     input:
         stats_tsv = os.path.join(result_path, 'results', "{sample}", '{sample}.stats.tsv'),
         tss_csv = os.path.join(result_path, 'results', "{sample}", '{sample}.tss_histogram.csv'),
         # For mapped files, use first run or merged stats
-        mapped_txt = lambda w: os.path.join(result_path, 'results', get_runs_for_sample(w.sample)[0], 'mapped', f'{get_runs_for_sample(w.sample)[0]}.txt') if len(get_runs_for_sample(w.sample)) > 0 else "",
+        mapped_log = lambda w: os.path.join(
+            result_path,
+            'results',
+            get_runs_for_sample(w.sample)[0],
+            'mapped',
+            f'{get_runs_for_sample(w.sample)[0]}.{_ALIGNER_LOG_SUFFIX}'
+        ) if len(get_runs_for_sample(w.sample)) > 0 else "",
         samblaster_log = lambda w: os.path.join(result_path, 'results', get_runs_for_sample(w.sample)[0], 'mapped', f'{get_runs_for_sample(w.sample)[0]}.samblaster.log') if len(get_runs_for_sample(w.sample)) > 0 else "",
         flagstat_log = lambda w: os.path.join(result_path, 'results', get_runs_for_sample(w.sample)[0], 'mapped', f'{get_runs_for_sample(w.sample)[0]}.samtools_flagstat.log') if len(get_runs_for_sample(w.sample)) > 0 else "",
         macs2_log = os.path.join(result_path, 'results', "{sample}", 'peaks', '{sample}.macs2.log'),
@@ -12,7 +22,7 @@ rule symlink_stats:
     output:
         stats_tsv = os.path.join(result_path, 'report', '{sample}.stats.tsv'),
         tss_csv = os.path.join(result_path, 'report', '{sample}_TSS.csv'),
-        mapped_txt = os.path.join(result_path, 'report', '{sample}.txt'),
+        mapped_log = os.path.join(result_path, 'report', '{sample}.' + _ALIGNER_LOG_SUFFIX),
         samblaster_log = os.path.join(result_path, 'report', '{sample}.samblaster.log'),
         flagstat_log = os.path.join(result_path, 'report', '{sample}.samtools_flagstat.log'),
         macs2_log = os.path.join(result_path, 'report', '{sample}.macs2.log'),
@@ -26,13 +36,13 @@ rule symlink_stats:
         """
         ln -sfn $(realpath --relative-to=$(dirname {output.stats_tsv}) {input.stats_tsv}) {output.stats_tsv}
         ln -sfn $(realpath --relative-to=$(dirname {output.tss_csv}) {input.tss_csv}) {output.tss_csv}
-        ln -sfn $(realpath --relative-to=$(dirname {output.mapped_txt}) {input.mapped_txt}) {output.mapped_txt}
+        ln -sfn $(realpath --relative-to=$(dirname {output.mapped_log}) {input.mapped_log}) {output.mapped_log}
         ln -sfn $(realpath --relative-to=$(dirname {output.samblaster_log}) {input.samblaster_log}) {output.samblaster_log}
         ln -sfn $(realpath --relative-to=$(dirname {output.flagstat_log}) {input.flagstat_log}) {output.flagstat_log}
         ln -sfn $(realpath --relative-to=$(dirname {output.macs2_log}) {input.macs2_log}) {output.macs2_log}
         ln -sfn $(realpath --relative-to=$(dirname {output.peaks_xls}) {input.peaks_xls}) {output.peaks_xls}
         """
-            
+
 rule multiqc:
     input:
         expand(os.path.join(result_path,"results","{sample}","mapped", "{sample}.filtered.bam"), sample=samples.keys()),
@@ -54,7 +64,7 @@ rule multiqc:
         multiqc_stats = os.path.join(result_path, "report", "multiqc_report_data", "multiqc_general_stats.txt"),
     params:
         result_path = result_path,
-        multiqc_configs = "{{'title': '{name}', 'intro_text': 'Quality Control Metrics of the ATAC-seq pipeline.', 'annotation': '{annot}', 'genome': '{genome}', 'exploratory_columns': {exploratory_columns}, 'skip_versions_section': true}}".format(name = config["project_name"], annot = config["annotation"], genome = config["genome"], exploratory_columns = config["annot_columns"]),
+        multiqc_configs = "{{'title': '{name}', 'intro_text': 'Quality Control Metrics of the ATAC-seq pipeline.', 'annotation': '{annot}', 'genome': '{genome}', 'exploratory_columns': {exploratory_columns}, 'skip_versions_section': true,'custom_content': {custom_content}}}".format(name = config["project_name"], annot = config["annotation"], genome = config["genome"], exploratory_columns = config["annot_columns"], custom_content = config.get("custom_content", "")),
     resources:
         mem_mb=config.get("mem", "16000"),
     threads: config.get("threads", 2)
