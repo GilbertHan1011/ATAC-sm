@@ -35,3 +35,11 @@
 - Job 2852861 confirmed strict-filter deferral exactly: the retained-BAM
   strict derivative and direct strict remap each have 80,882,757 records and
   the same SAM-record MD5. Results are in `tests/hpc_validation/RESULTS.md`.
+- Formal HPC `rule all` dry-run parsed the 22-row archived sample annotation
+  but stopped at the missing project HOMER executable. An explicit formal BAM
+  dry-run resolved the changed alignment path for all inputs: 22 fastp, 18
+  prealign, 18 align, and one BWA index jobs.
+- Corrected the HPC path: the real checkout is
+  `/storage/zhangkaiLab/hanlitian/macrophage/script/ATAC-sm`, which has HOMER.
+  Its complete `rule all --dry-run` succeeds (12 pending downstream jobs for
+  its current ATAC26 configuration); no computation was submitted.
