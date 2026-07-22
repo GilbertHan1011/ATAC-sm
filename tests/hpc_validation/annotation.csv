@@ -1,0 +1,2 @@
+sample_name,run,R1,R2,read_type,passqc,organism,sample,batch,tissue,stage,replicate_sample_name
+B56-1_ATAC19,1,/storage/zhangkaiLab/resource/Collaborators/Hanjie_Li/ATAC-seq/ATAC19/B56-1_L2_Q18272W0150.R1.fastq.zst,/storage/zhangkaiLab/resource/Collaborators/Hanjie_Li/ATAC-seq/ATAC19/B56-1_L2_Q18272W0150.R2.fastq.zst,paired,1,human,B56-1,ATAC19,Brain,16PCW,B56

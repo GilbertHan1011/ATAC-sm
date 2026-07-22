@@ -1,0 +1,70 @@
+# ATAC reference and BAM retention plan
+
+## Goal
+
+Use the same `hg38.fa` sequence as CUT&Tag with an isolated BWA-MEM2 index,
+retain all mapped BAM records, keep downstream file paths and rules unchanged,
+and validate the change on real data.
+
+## Acceptance criteria
+
+- BWA-MEM2 index lives under `hg38/indices_for_BWA-MEM2/` and does not touch
+  the Bowtie2 index directory.
+- Alignment uses the CUT&Tag FASTA at `{database_dir}/hg38/hg38.fa`.
+- The retained BAM applies only `samtools view -F 4` after duplicate marking.
+- Existing `{sample}.filtered.bam` paths and downstream rules remain unchanged.
+- Local regression checks and a Snakemake dry-run pass.
+- `B56-1_ATAC19` completes through BAM, tagAlign, peaks, TSS, ATAQV, peak QC,
+  and bigWig on HPC.
+- CD99 (`chrX:2690000-2750000`) is no longer a hard zero.
+- A strict BAM derived from the retained BAM reproduces direct strict filtering
+  on the same new alignment stream.
+
+## Phases
+
+1. **Plan and inspect** — complete
+2. **Regression check (red)** — complete
+   - Assert isolated index prefix and BWA-MEM2 index suffixes.
+   - Assert filtering is exactly `-F 4`.
+   - Assert downstream BAM paths are unchanged.
+3. **Minimal implementation (green)** — complete
+   - Update production and test configs.
+   - Update BWA index dependency/path handling.
+   - Update index rule to use `bwa-mem2 index -p`.
+   - Relax BAM filtering to `-F 4`.
+4. **Local verification** — complete
+   - Run regression check.
+   - Validate configuration/schema and Snakemake DAG.
+5. **HPC real-data validation** — complete
+   - Build index with Slurm.
+   - Run `B56-1_ATAC19` to selected downstream targets in a new output root.
+   - Check BAM integrity, flags, CD99 reads, and downstream artifacts.
+6. **Controlled metric comparison** — complete
+   - Compare old versus retained BAM descriptively.
+   - Compare direct strict filtering versus strict filtering derived from the
+     retained BAM on the same new alignment.
+   - Record results and remaining differences.
+
+## Files expected to change
+
+- `config/config.yaml`
+- `config/config_test.yaml`
+- `workflow/rules/common.smk`
+- `workflow/rules/processing.smk`
+- one minimal regression check under `tests/`
+
+## Errors encountered
+
+| Error | Resolution |
+|---|---|
+| Root-level `Snakefile` not found | Workflow entry point is `workflow/Snakefile`. |
+| `python -m unittest tests/test_alignment_contract.py` could not import a non-package path | Run the test file directly. |
+| Default workflow profile requested an unavailable local Slurm executor plugin | Disabled the workflow profile for local parsing. |
+| Full local dry-run could not see HPC-only FASTQs | Used local rule/DAG parsing; full dry-run will run on HPC. |
+| First HPC dry-run could not resolve the optional project-specific HOMER installation needed by `peak_annotation` | Excluded HOMER annotation from this focused validation and will calculate peak count/FRIP directly from the unchanged BAM and MACS2 outputs. |
+| Slurm rejected `amd-ep2` from login05 | Switched the validation job to available `amd-ep5,intel-sc3` partitions. |
+| Job 2845615 failed before computation because compute nodes cannot reach conda channels | Reused the existing HPC `py311` tool environment, supplied the pinned samblaster binary locally, aliased installed MACS3 as `macs2`, and disabled per-rule conda creation for the validation run. ATAQV is excluded because it is not installed in the shared environment. |
+| Locally compiled samblaster required a newer glibc and some moved-environment Python entry points had stale shebangs | Compile samblaster 0.1.24 on the HPC login node and use small wrappers that invoke MACS3/deepTools with the current environment Python. |
+| BWA-MEM2 index construction was killed at 64 GB (exit 137) | Added a 120 GB memory resource to the index rule and raised the validation allocation to 128 GB. |
+| TSS coverage aborted because the retained BAM has reads on random contigs absent from the TSS BED | Stream only contigs present in the slopped TSS BED from the indexed BAM, retaining memory-efficient `bedtools -sorted`. |
+| First direct strict-remap control used 12 BWA threads while pipeline alignment uses 6 | Rerun the control with the exact pipeline thread count and process-substitution FASTQ input before comparing records. |

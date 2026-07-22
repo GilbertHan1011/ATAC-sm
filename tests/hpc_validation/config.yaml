@@ -1,0 +1,82 @@
+project:
+  name: 20260722_ATAC_reference_validation
+  genome: hg38
+  out_dir: /storage/zhangkaiLab/hanlitian/macrophage/process/20260722_ATAC_reference_validation
+  pep_config: ../pep/project_config.yaml
+  read_type: paired
+
+resources:
+  mem_mb: 6000
+  threads: 2
+
+adapters:
+  sequence: CTGTCTCTTATA
+  fasta: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/nextera_adapters.fa
+
+alignment:
+  tool: bwa-mem2
+  sequencing_platform: illumina
+  local_mode: true
+  prealign:
+    enabled: true
+    indices:
+      - name: chrM
+        path: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38_rcrds/rcrds
+  bwa:
+    index: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/indices_for_BWA-MEM2/hg38
+    min_score: null
+    threads: null
+    extra_args: ""
+  bowtie2:
+    index: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/indices_for_Bowtie2/hg38
+
+filtering:
+  tss_slop: 2000
+  noise_lower: 100
+
+peaks:
+  macs2_keep_dup: all
+  slop_extension: 250
+  macs2_shift: -75
+  macs2_extsize: 150
+  macs2_format: BED
+  macs2_pval: 1e-4
+  disable_tn5_shift: false
+
+replicates:
+  pval_thresh: 1e-3
+  smooth_win: 150
+  cap_num_peak: 300000
+  pseudoreplication_random_seed: 0
+  peak_combination_method: idr
+  idr_thresh: 0.05
+  idr_rank: signal.value
+  nonamecheck: false
+
+annotation:
+  tss_size: 100
+  distal_size: 10000
+  promoter:
+    up: 1000
+    down: 500
+  templates:
+    gencode: ../resources/UROPA/gencode_config_TEMPLATE_V4.txt
+    regulatory: ../resources/UROPA/regulatory_config_TEMPLATE.txt
+
+refs:
+  fasta: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/hg38.fa
+  chrom_sizes: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/hg38.chromSizes
+  genome_size_bp: 2747877777
+  mito_name: chrM
+  blacklist: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/hg38-ENCODE_blacklist.sorted.v3.bed
+  whitelist: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/hg38-ENCODE_whitelist.sorted.v3.bed
+  unique_tss: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/hg38_gencode_tss_unique.sorted.bed
+  regulatory_regions: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.chromosomes_only.20161111.bed
+  gencode_gtf: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/gencode.v38.basic.annotation.gtf
+  regulatory_gtf: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline/hg38/homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gtf
+
+paths:
+  data_dir: /storage/zhangkaiLab/resource/Collaborators/Hanjie_Li/ATAC-seq
+  process_dir: /storage/zhangkaiLab/hanlitian/macrophage/process
+  database_dir: /storage/zhangkaiLab/hanlitian/database/algin_ref/atac_pipeline
+  shared_genome_dir: /storage/zhangkaiLab/shared/genomes/GRCh38

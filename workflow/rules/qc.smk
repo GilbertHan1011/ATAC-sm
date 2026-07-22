@@ -44,9 +44,14 @@ rule tss_coverage:
         "logs/rules/tss_coverage_{sample}.log"
     shell:
         """
+        TSS_SLOPPED=$(mktemp)
+        TSS_CHROMS=$(mktemp)
+        trap 'rm -f "$TSS_SLOPPED" "$TSS_CHROMS"' EXIT
+        bedtools slop -b {params.tss_slop} -i {input.unique_tss} -g {input.chromosome_sizes} > "$TSS_SLOPPED"
+        awk '!seen[$1]++ {{print $1}}' "$TSS_SLOPPED" > "$TSS_CHROMS"
         echo "base,count" > {output.tss_hist};
-        bedtools slop -b {params.tss_slop} -i {input.unique_tss} -g {input.chromosome_sizes} | \
-            bedtools coverage -a - -b {input.bam} -d -sorted | \
+        samtools view -bh {input.bam} $(tr '\\n' ' ' < "$TSS_CHROMS") | \
+            bedtools coverage -a "$TSS_SLOPPED" -b stdin -d -sorted | \
             awk '{{if($6 == "+"){{ counts[$7] += $8;}} else counts[{params.double_slop} - $7 + 1] += $8;}} END {{ for(pos in counts) {{ if(pos < {params.noise_lower} || pos > {params.noise_upper}) {{ noise += counts[pos] }} }}; average_noise = noise /(2 * {params.noise_lower}); for(pos in counts) {{print pos-2000-1","(counts[pos]/average_noise) }} }}' | \
             sort -t "," -k1,1n >> {output.tss_hist} ;
         """
@@ -115,4 +120,3 @@ rule mkarv:
             {input.jsons} 2> {log}
 
         """
-

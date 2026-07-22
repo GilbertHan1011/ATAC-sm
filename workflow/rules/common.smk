@@ -233,11 +233,8 @@ def get_bwa_input_string(wildcards, input):
     return cmd
 
 def get_filtering_flags(wildcards):
-    """Generate samtools filtering flags based on read type."""
-    base_flags = f"-q 30 -F {config['filtering']['sam_flag']} -L {config['refs']['whitelist']}"
-    if samples[wildcards.sample]["read_type"] == "paired":
-        return f"{base_flags} -f 2"
-    return base_flags
+    """Retain every mapped alignment record in the canonical BAM."""
+    return "-F 4"
 
 def get_add_mate_tags(wildcards):
     """Get samblaster addMateTags flag if paired-end."""
@@ -265,9 +262,7 @@ def get_bwa_index_path():
 def get_bwa_index_input(wildcards=None):
     """Get BWA-MEM2 index file dependencies.
     Accepts wildcards parameter for Snakemake input function compatibility."""
-    if not config["alignment"]["bwa"].get("index") or config["alignment"]["bwa"].get("index") in ("", "null", None):
-        return multiext(config["refs"]["fasta"], ".amb", ".ann", ".bwt", ".pac", ".sa", ".0123", ".alt")
-    return []
+    return multiext(get_bwa_index_path(), ".amb", ".ann", ".pac", ".bwt.2bit.64", ".0123")
 
 def _bwa_mem_mb(wildcards, attempt):
     """Return memory allocation for bwa alignment based on retry attempt."""

@@ -34,8 +34,8 @@ alignment:
   
   # Tool Specifics
   bwa:
-    # Uses {shared_genome_dir} from PEP
-    index: "{shared_genome_dir}/bwa-mem2/GRCh38"
+    # Built from refs.fasta, isolated from the Bowtie2 index
+    index: "{database_dir}/hg38/indices_for_BWA-MEM2/hg38"
     min_score: null
     threads: null # null = defaults
     extra_args: ""
@@ -46,8 +46,6 @@ alignment:
 
 # 3. Filtering & QC
 filtering:
-  # 2316: Keep duplicates? (Check logic: usually 3340 filters dups)
-  sam_flag: 2316 
   tss_slop: 2000
   noise_lower: 100
   
@@ -107,5 +105,4 @@ refs:
   # GTF Annotations
   gencode_gtf: "{database_dir}/hg38/gencode.v38.basic.annotation.gtf"
   regulatory_gtf: "{database_dir}/hg38/homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gtf"
-
 

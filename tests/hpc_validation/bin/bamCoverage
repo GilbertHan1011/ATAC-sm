@@ -1,0 +1,3 @@
+#!/bin/bash
+exec /storage/zhangkaiLab/hanlitian/software/micromamba/micromamba/envs/py311/bin/python \
+  /storage/zhangkaiLab/hanlitian/software/micromamba/micromamba/envs/py311/bin/bamCoverage "$@"

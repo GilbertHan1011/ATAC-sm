@@ -59,7 +59,6 @@ if ALIGNER_TOOL == "bowtie2":
             fasta_rev = lambda w: get_reads(w, 1),
             bowtie2_index = os.path.dirname(config["alignment"]["bowtie2"]["index"]),
             adapter_fasta = config["adapters"]["fasta"] if config["adapters"]["fasta"] != "" else [],
-            whitelisted_regions = config["refs"]["whitelist"],
         wildcard_constraints:
             sample="|".join(samples.keys())
         output:
@@ -114,7 +113,6 @@ elif ALIGNER_TOOL == "bwa-mem2":
             fasta_fwd = lambda w: get_reads(w, 0),
             fasta_rev = lambda w: get_reads(w, 1),
             index = get_bwa_index_input,
-            whitelisted_regions = config["refs"]["whitelist"],
         wildcard_constraints:
             sample="|".join(samples.keys())
         output:
@@ -203,14 +201,21 @@ rule bwa_mem2_index:
     input:
         fasta = config["refs"]["fasta"]
     output:
-        index = multiext(config["refs"]["fasta"], ".amb", ".ann", ".pac", ".bwt.2bit.64", ".0123"),
+        index = multiext(get_bwa_index_path(), ".amb", ".ann", ".pac", ".bwt.2bit.64", ".0123"),
+    params:
+        index_prefix = get_bwa_index_path(),
+        index_dir = os.path.dirname(get_bwa_index_path()),
+    resources:
+        mem_mb = 120000,
+        runtime = 240,
     log:
         "logs/bwa_mem2_index/bwa_mem2_index.log"
     conda:
         "../envs/bwa.yaml"
     shell:
         """
-        bwa-mem2 index {input.fasta} 2> {log}
+        mkdir -p "{params.index_dir}" "$(dirname "{log}")"
+        bwa-mem2 index -p {params.index_prefix} {input.fasta} 2> {log}
         """
 
 # ============================================================================
