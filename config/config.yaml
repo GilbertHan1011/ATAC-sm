@@ -21,9 +21,14 @@ adapters:
 
 # 2. Alignment Strategy
 alignment:
+  backend: legacy
   tool: bwa-mem2  # Options: "bowtie2" or "bwa-mem2"
   sequencing_platform: illumina
   local_mode: true # If use bowtie2, this is necessary.
+
+  tachyon_upstream:
+    executable: /home/gilberthan/disk1/projects/tachyon_upstream/target/release/tachyon-upstream
+    adapter: nextera
   
   # Pre-alignment (Optional: e.g. filter chrM first)
   prealign:
@@ -105,4 +110,3 @@ refs:
   # GTF Annotations
   gencode_gtf: "{database_dir}/hg38/gencode.v38.basic.annotation.gtf"
   regulatory_gtf: "{database_dir}/hg38/homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gtf"
-

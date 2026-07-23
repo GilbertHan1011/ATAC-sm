@@ -2,18 +2,46 @@
 # Configuration & Constants
 # ============================================================================
 from pathlib import Path
+from shlex import quote
 
 prealign_enabled = config["alignment"].get("prealign", {}).get("enabled", True)
 prealignments = config["alignment"].get("prealign", {}).get("indices", []) or []
 has_prealignments = prealign_enabled and len(prealignments) > 0
 ALIGNER_TOOL = config["alignment"].get("tool", "bowtie2")
 
+# Optional alignment producer backend. The opt-in Tachyon-Upstream backend
+# replaces the legacy raw FASTQ -> fastp -> [prealign] -> bwa-mem2 chain with
+# a single pinned executable that writes the canonical BAM/BAI plus a native
+# UCF side output. Default stays legacy to preserve existing semantics.
+ALIGNMENT_BACKEND = config["alignment"].get("backend", "legacy")
+TACHYON_UPSTREAM_CONFIG = config["alignment"].get("tachyon_upstream", {})
+TACHYON_UPSTREAM_EXE = TACHYON_UPSTREAM_CONFIG.get(
+    "executable", "/home/gilberthan/disk1/projects/tachyon_upstream/target/release/tachyon-upstream"
+)
+TACHYON_UPSTREAM_ADAPTER = TACHYON_UPSTREAM_CONFIG.get("adapter", "nextera")
+
+if ALIGNMENT_BACKEND == "legacy" and ALIGNER_TOOL not in {"bowtie2", "bwa-mem2"}:
+    raise ValueError(f"Unknown aligner: {ALIGNER_TOOL}. Must be 'bowtie2' or 'bwa-mem2'")
+
+# Tachyon cannot prealign, so refuse the combination at parse time rather than
+# silently producing a broken DAG.
+if ALIGNMENT_BACKEND == "tachyon_upstream" and has_prealignments:
+    sys.stderr.write(
+        "ERROR: alignment.backend='tachyon_upstream' requires "
+        "alignment.prealign.enabled=false.\n"
+        "Tachyon reads raw paired FASTQs end-to-end and does not run a chrM "
+        "prealignment step; set alignment.prealign.enabled=false or revert to "
+        "alignment.backend='legacy'.\n"
+    )
+    sys.exit(1)
+
+
 
 # ============================================================================
 # Prealignment Rule
 # ============================================================================
 
-if has_prealignments:
+if ALIGNMENT_BACKEND == "legacy" and has_prealignments:
     # Validate prealignment configuration
     for entry in prealignments:
         if isinstance(entry, dict):
@@ -52,146 +80,199 @@ if has_prealignments:
 # Alignment Rules
 # ============================================================================
 
-if ALIGNER_TOOL == "bowtie2":
-    rule align_bowtie2:
-        input:
-            fasta_fwd = lambda w: get_reads(w, 0),
-            fasta_rev = lambda w: get_reads(w, 1),
-            bowtie2_index = os.path.dirname(config["alignment"]["bowtie2"]["index"]),
-            adapter_fasta = config["adapters"]["fasta"] if config["adapters"]["fasta"] != "" else [],
-        wildcard_constraints:
-            sample="|".join(samples.keys())
-        output:
-            bam = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam"),
-            bai = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam.bai"),
-            bowtie_log = str(get_output_dir("report/align") / "{sample}.bowtie2.log"),
-            bowtie_met = str(get_output_dir("report/align") / "{sample}.bowtie2.met"),
-            samblaster_log = str(get_output_dir("report/align") / "{sample}.samblaster.log"),
-        params:
-            sample_name = "{sample}",
-            # Wrapped in lambda for safety
-            bowtie2_input = lambda w, input: get_bowtie2_input_string(w, input),
-            add_mate_tags = get_add_mate_tags,
-            adapter_sequence = "-a " + config["adapters"]["sequence"] if config["adapters"]["sequence"] != "" else "",
-            adapter_fasta = "--adapter_fasta " + config["adapters"]["fasta"] if config["adapters"]["fasta"] != "" else "",
-            sequencing_platform = config["alignment"]["sequencing_platform"],
-            bowtie2_index = config["alignment"]["bowtie2"]["index"],
-            bowtie2_local_mode = "--local" if config["alignment"].get("local_mode", False) else "",
-            filtering_flags = get_filtering_flags,
-        resources:
-            mem_mb = config["resources"].get("mem_mb", 16000),
-            runtime = 1000,
-        threads: 5 * config["resources"].get("threads", 2)
-        conda:
-            "../envs/bowtie2.yaml"
-        log:
-            "logs/rules/align_{sample}.log"
-        shell:
-            """
-            set -euo pipefail
-            
-            mkdir -p $(dirname {output.bam}) $(dirname {output.bowtie_log})
-            result_path=$(dirname {output.bam})
-            find $result_path -type f -name '{wildcards.sample}.filtered.bam.tmp.*' -delete 2>/dev/null || true
-            rm -f "{output.bowtie_log}" "{output.bowtie_met}" "{output.samblaster_log}" 2>/dev/null || true
-            
-            RG="--rg-id {wildcards.sample} --rg SM:{params.sample_name} --rg PL:{params.sequencing_platform}"
-            
-            bowtie2 $RG --very-sensitive --no-discordant -p {threads} --maxins 2000 \
-                -x {params.bowtie2_index} {params.bowtie2_local_mode} \
-                --met-file "{output.bowtie_met}" {params.bowtie2_input} 2> "{output.bowtie_log}" | \
-            samblaster {params.add_mate_tags} 2> "{output.samblaster_log}" | \
-            samtools view {params.filtering_flags} -bhS - 2>> "{output.bowtie_log}" | \
-            samtools sort -o "{output.bam}" - 2>> "{output.bowtie_log}"
-            
-            samtools index "{output.bam}" 2>> "{output.bowtie_log}"
-            """
+if ALIGNMENT_BACKEND == "legacy":
+    if ALIGNER_TOOL == "bowtie2":
+        rule align_bowtie2:
+            input:
+                fasta_fwd = lambda w: get_reads(w, 0),
+                fasta_rev = lambda w: get_reads(w, 1),
+                bowtie2_index = os.path.dirname(config["alignment"]["bowtie2"]["index"]),
+                adapter_fasta = config["adapters"]["fasta"] if config["adapters"]["fasta"] != "" else [],
+            wildcard_constraints:
+                sample="|".join(samples.keys())
+            output:
+                bam = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam"),
+                bai = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam.bai"),
+                bowtie_log = str(get_output_dir("report/align") / "{sample}.bowtie2.log"),
+                bowtie_met = str(get_output_dir("report/align") / "{sample}.bowtie2.met"),
+                samblaster_log = str(get_output_dir("report/align") / "{sample}.samblaster.log"),
+            params:
+                sample_name = "{sample}",
+                # Wrapped in lambda for safety
+                bowtie2_input = lambda w, input: get_bowtie2_input_string(w, input),
+                add_mate_tags = get_add_mate_tags,
+                adapter_sequence = "-a " + config["adapters"]["sequence"] if config["adapters"]["sequence"] != "" else "",
+                adapter_fasta = "--adapter_fasta " + config["adapters"]["fasta"] if config["adapters"]["fasta"] != "" else "",
+                sequencing_platform = config["alignment"]["sequencing_platform"],
+                bowtie2_index = config["alignment"]["bowtie2"]["index"],
+                bowtie2_local_mode = "--local" if config["alignment"].get("local_mode", False) else "",
+                filtering_flags = get_filtering_flags,
+            resources:
+                mem_mb = config["resources"].get("mem_mb", 16000),
+                runtime = 1000,
+            threads: 5 * config["resources"].get("threads", 2)
+            conda:
+                "../envs/bowtie2.yaml"
+            log:
+                "logs/rules/align_{sample}.log"
+            shell:
+                """
+                set -euo pipefail
 
-elif ALIGNER_TOOL == "bwa-mem2":
-    rule align_bwa_mem:
+                mkdir -p $(dirname {output.bam}) $(dirname {output.bowtie_log})
+                result_path=$(dirname {output.bam})
+                find $result_path -type f -name '{wildcards.sample}.filtered.bam.tmp.*' -delete 2>/dev/null || true
+                rm -f "{output.bowtie_log}" "{output.bowtie_met}" "{output.samblaster_log}" 2>/dev/null || true
+
+                RG="--rg-id {wildcards.sample} --rg SM:{params.sample_name} --rg PL:{params.sequencing_platform}"
+
+                bowtie2 $RG --very-sensitive --no-discordant -p {threads} --maxins 2000 \
+                    -x {params.bowtie2_index} {params.bowtie2_local_mode} \
+                    --met-file "{output.bowtie_met}" {params.bowtie2_input} 2> "{output.bowtie_log}" | \
+                samblaster {params.add_mate_tags} 2> "{output.samblaster_log}" | \
+                samtools view {params.filtering_flags} -bhS - 2>> "{output.bowtie_log}" | \
+                samtools sort -o "{output.bam}" - 2>> "{output.bowtie_log}"
+
+                samtools index "{output.bam}" 2>> "{output.bowtie_log}"
+                """
+
+
+    else:
+        rule align_bwa_mem:
+            input:
+                fasta_fwd = lambda w: get_reads(w, 0),
+                fasta_rev = lambda w: get_reads(w, 1),
+                index = get_bwa_index_input,
+            wildcard_constraints:
+                sample="|".join(samples.keys())
+            output:
+                bam = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam"),
+                bai = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam.bai"),
+                bwa_log = str(get_output_dir("report/align") / "{sample}.bwa.log"),
+                samblaster_log = str(get_output_dir("report/align") / "{sample}.samblaster.log"),
+                # NEW: This file will contain stats for ALL reads (before filtering)
+                raw_stats = str(get_output_dir("report/align") / "{sample}.samtools_flagstat.log"),
+            params:
+                sample_name = "{sample}",
+                bwa_input = lambda w, input: get_bwa_input_string(w, input),
+                add_mate_tags = get_add_mate_tags,
+                sequencing_platform = config["alignment"]["sequencing_platform"],
+                bwa_args = config["alignment"]["bwa"].get("extra_args", ""),
+                bwa_min_score_flag = sanitize_bwa_min_score_flag(),
+                bwa_m_flag = "-M",
+                bwa_index_path = get_bwa_index_path(),
+                filtering_flags = get_filtering_flags,
+                # OPTIMIZATION PARAMETERS:
+                # 1. Dedicate 4 threads to sorting (prevents the pipe from clogging)
+                sort_threads = 4,
+                # 2. Calculate BWA threads (total threads - 4, minimum 1)
+                # Note: threads variable is available in shell block, calculated there
+                # 3. Give Sort 2GB per thread (Total 8GB buffer). Prevents disk-spilling.
+                sort_mem_per_thread = "2G"
+            resources:
+                # Ensure this variable covers BWA memory + ~8GB for Sort!
+                mem_mb = _bwa_mem_mb,
+                runtime = 800,
+            threads: 5 * config["resources"].get("threads", 2) # Ensures you have at least ~10 threads
+            conda:
+                "../envs/bwa.yaml"
+            log:
+                "logs/rules/align_bwa_mem_{sample}.log"
+            shell:
+                """
+                set -euo pipefail
+
+                mkdir -p $(dirname {output.bam}) $(dirname {output.bwa_log})
+                result_path=$(dirname {output.bam})
+
+                # Clean up previous temp files
+                find $result_path -type f -name '{wildcards.sample}.filtered.bam.tmp.*' -delete 2>/dev/null || true
+                rm -f "{output.bwa_log}" "{output.samblaster_log}" "{output.raw_stats}" 2>/dev/null || true
+
+                RG="@RG\\tID:{wildcards.sample}\\tSM:{params.sample_name}\\tPL:{params.sequencing_platform}"
+
+                # Calculate BWA threads (total threads - sort threads, minimum 1)
+                BWA_THREADS=$(( {threads} - {params.sort_threads} ))
+                if [ $BWA_THREADS -lt 1 ]; then
+                    BWA_THREADS=1
+                fi
+
+                # PIPELINE EXPLANATION:
+                # 1. bwa-mem2: Uses BWA_THREADS (calculated above)
+                # 2. samblaster: Marks duplicates
+                # 3. tee: Splits stream -> saves RAW stats to {output.raw_stats}
+                # 4. view: Filters reads (e.g. removes unmapped)
+                # 5. sort: Uses {params.sort_threads} and {params.sort_mem_per_thread}
+
+                bwa-mem2 mem \
+                    {params.bwa_args} \
+                    {params.bwa_m_flag} \
+                    {params.bwa_min_score_flag} \
+                    -R "$RG" \
+                    -t $BWA_THREADS \
+                    {params.bwa_index_path} \
+                    {params.bwa_input} 2> {output.bwa_log} | \
+                samblaster {params.add_mate_tags} 2> {output.samblaster_log} | \
+                tee >(samtools flagstat - > {output.raw_stats}) | \
+                samtools view {params.filtering_flags} -bhS - 2>> {output.bwa_log} | \
+                samtools sort -@ {params.sort_threads} -m {params.sort_mem_per_thread} -o {output.bam} - 2>> {output.bwa_log}
+
+                samtools index "{output.bam}" 2>> "{output.bwa_log}"
+                """
+# ============================================================================
+# Tachyon-Upstream Producer Rule (opt-in via alignment.backend)
+# ============================================================================
+# Replaces the raw FASTQ -> fastp -> [prealign] -> bwa-mem2 chain with a single
+# pinned executable. Writes the canonical BAM/BAI plus a native UCF side output
+# and stats JSON so every downstream rule remains unchanged.
+
+if ALIGNMENT_BACKEND == "tachyon_upstream":
+    rule align_tachyon_upstream:
         input:
-            fasta_fwd = lambda w: get_reads(w, 0),
-            fasta_rev = lambda w: get_reads(w, 1),
+            r1 = lambda w: get_paired_raw_fastqs_for_sample(w.sample)[0],
+            r2 = lambda w: get_paired_raw_fastqs_for_sample(w.sample)[1],
             index = get_bwa_index_input,
         wildcard_constraints:
             sample="|".join(samples.keys())
         output:
             bam = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam"),
             bai = str(get_output_dir("important_processed/bam") / "{sample}.filtered.bam.bai"),
-            bwa_log = str(get_output_dir("report/align") / "{sample}.bwa.log"),
-            samblaster_log = str(get_output_dir("report/align") / "{sample}.samblaster.log"),
-            # NEW: This file will contain stats for ALL reads (before filtering)
-            raw_stats = str(get_output_dir("report/align") / "{sample}.samtools_flagstat.log"),
+            ucf = str(get_output_dir("middle_files/ucf") / "{sample}.ucf"),
+            stats = str(get_output_dir("report/align") / "{sample}.tachyon.stats.json"),
         params:
-            sample_name = "{sample}",
-            bwa_input = lambda w, input: get_bwa_input_string(w, input),
-            add_mate_tags = get_add_mate_tags,
-            sequencing_platform = config["alignment"]["sequencing_platform"],
-            bwa_args = config["alignment"]["bwa"].get("extra_args", ""),
-            bwa_min_score_flag = sanitize_bwa_min_score_flag(),
-            bwa_m_flag = "-M",
+            exe = TACHYON_UPSTREAM_EXE,
+            adapter = TACHYON_UPSTREAM_ADAPTER,
             bwa_index_path = get_bwa_index_path(),
-            filtering_flags = get_filtering_flags,
-            # OPTIMIZATION PARAMETERS:
-            # 1. Dedicate 4 threads to sorting (prevents the pipe from clogging)
-            sort_threads = 4,
-            # 2. Calculate BWA threads (total threads - 4, minimum 1)
-            # Note: threads variable is available in shell block, calculated there
-            # 3. Give Sort 2GB per thread (Total 8GB buffer). Prevents disk-spilling.
-            sort_mem_per_thread = "2G"
+            r1_args = lambda w, input: " ".join(
+                f"--r1 {quote(str(path))}" for path in input.r1
+            ),
+            r2_args = lambda w, input: " ".join(
+                f"--r2 {quote(str(path))}" for path in input.r2
+            ),
         resources:
-            # Ensure this variable covers BWA memory + ~8GB for Sort!
-            mem_mb = _bwa_mem_mb, 
+            mem_mb = 5 * config["resources"].get("mem_mb", 16000),
             runtime = 800,
-        threads: 5 * config["resources"].get("threads", 2) # Ensures you have at least ~10 threads
-        conda:
-            "../envs/bwa.yaml"
+        threads: 4 * config["resources"].get("threads", 2)
         log:
-            "logs/rules/align_bwa_mem_{sample}.log"
+            "logs/rules/align_tachyon_upstream_{sample}.log"
         shell:
             """
             set -euo pipefail
-            
-            mkdir -p $(dirname {output.bam}) $(dirname {output.bwa_log})
-            result_path=$(dirname {output.bam})
-            
-            # Clean up previous temp files
-            find $result_path -type f -name '{wildcards.sample}.filtered.bam.tmp.*' -delete 2>/dev/null || true
-            rm -f "{output.bwa_log}" "{output.samblaster_log}" "{output.raw_stats}" 2>/dev/null || true
-            
-            RG="@RG\\tID:{wildcards.sample}\\tSM:{params.sample_name}\\tPL:{params.sequencing_platform}"
-            
-            # Calculate BWA threads (total threads - sort threads, minimum 1)
-            BWA_THREADS=$(( {threads} - {params.sort_threads} ))
-            if [ $BWA_THREADS -lt 1 ]; then
-                BWA_THREADS=1
-            fi
-            
-            # PIPELINE EXPLANATION:
-            # 1. bwa-mem2: Uses BWA_THREADS (calculated above)
-            # 2. samblaster: Marks duplicates
-            # 3. tee: Splits stream -> saves RAW stats to {output.raw_stats}
-            # 4. view: Filters reads (e.g. removes unmapped)
-            # 5. sort: Uses {params.sort_threads} and {params.sort_mem_per_thread}
-            
-            bwa-mem2 mem \
-                {params.bwa_args} \
-                {params.bwa_m_flag} \
-                {params.bwa_min_score_flag} \
-                -R "$RG" \
-                -t $BWA_THREADS \
-                {params.bwa_index_path} \
-                {params.bwa_input} 2> {output.bwa_log} | \
-            samblaster {params.add_mate_tags} 2> {output.samblaster_log} | \
-            tee >(samtools flagstat - > {output.raw_stats}) | \
-            samtools view {params.filtering_flags} -bhS - 2>> {output.bwa_log} | \
-            samtools sort -@ {params.sort_threads} -m {params.sort_mem_per_thread} -o {output.bam} - 2>> {output.bwa_log}
-            
-            samtools index "{output.bam}" 2>> "{output.bwa_log}"
+
+            mkdir -p $(dirname {output.bam}) $(dirname {output.ucf}) $(dirname {output.stats})
+
+            {params.exe:q} \
+                --assay atac \
+                --adapter {params.adapter:q} \
+                --index {params.bwa_index_path:q} \
+                --bam {output.bam:q} \
+                --ucf {output.ucf:q} \
+                --stats {output.stats:q} \
+                --threads {threads} \
+                {params.r1_args} \
+                {params.r2_args} 2> {log:q}
             """
 
-else:
-    raise ValueError(f"Unknown aligner: {ALIGNER_TOOL}. Must be 'bowtie2' or 'bwa-mem2'")
 
 # ============================================================================
 # BWA Index Rule
@@ -244,13 +325,13 @@ rule samtools_process:
     shell:
         """
         set -euo pipefail
-        
+
         mkdir -p $(dirname {output.stats})
-        samtools idxstats "{input.bam}" | awk '{{ 
-            sum += $3 + $4; 
+        samtools idxstats "{input.bam}" | awk '{{
+            sum += $3 + $4;
             if($1 == "{params.mitochondria_name}") {{ mito_count = $3; }}
-        }}END{{ 
-            print "mitochondrial_fraction\\t"mito_count/sum 
+        }}END{{
+            print "mitochondrial_fraction\\t"mito_count/sum
         }}' > "{output.stats}" 2>> "{output.samtools_log}"
         """
 
@@ -280,17 +361,7 @@ rule bam_to_bed:
     wildcard_constraints:
         sample="|".join(samples.keys())
     shell:
-        """
-        {params.script} \\
-            {input.bam} \\
-            {output.bed} \\
-            {wildcards.sample} \\
-            {params.is_paired} \\
-            {params.disable_tn5_shift} \\
-            {threads} \\
-            {params.bed_dir} \\
-            {log}
-        """
+        "{params.script} {input.bam} {output.bed} {wildcards.sample} {params.is_paired} {params.disable_tn5_shift} {threads} {params.bed_dir} {log}"
 
 # ============================================================================
 # Peak Calling
@@ -325,9 +396,9 @@ rule peak_calling:
     shell:
         """
         set -euo pipefail
-        
+
         mkdir -p {params.peaks_dir}
-        
+
         macs2 callpeak -t {input.bed} -f {params.macs2_format} \
             --nomodel --keep-dup {params.keep_dup} \
             --shift {params.macs2_shift} --extsize {params.macs2_extsize} \
@@ -335,7 +406,7 @@ rule peak_calling:
             -n {wildcards.sample} \
             -p {params.pval} \
             --outdir {params.peaks_dir} > "{output.macs2_log}" 2>&1
-        
+
         if [ ! -f {output.peak_calls} ] || [ ! -s {output.peak_calls} ]; then
             touch {output.peak_calls}
             touch {output.summits_bed}
@@ -379,18 +450,18 @@ rule peak_annotation:
     shell:
         """
         set -euo pipefail
-        
+
         export PATH="{params.homer_bin}:$PATH"
         mkdir -p {params.homer_dir}
-        
+
         # Initialize output files
         touch {output.peak_annot} {output.peak_annot_log} {output.homer_log} {output.homer_knownResults} {output.stats}
-        
+
         if [ -s "{input.peak_calls}" ]; then
             # Annotate peaks
             {params.homer_bin}/annotatePeaks.pl {input.peak_calls} {params.genome} > {output.peak_annot} 2> {output.peak_annot_log} || \
                 echo "HOMER annotation completed with warnings" >> {output.peak_annot_log}
-            
+
             # Motif finding
             if [ -s "{input.summits_bed}" ]; then
                 {params.homer_bin}/findMotifsGenome.pl "{input.summits_bed}" {params.genome} {params.homer_dir} \
@@ -399,18 +470,18 @@ rule peak_annotation:
             else
                 echo "No summits file available for motif finding" > {output.homer_log}
             fi
-            
+
             # Calculate statistics
             PEAK_COUNT=$(wc -l < {input.peak_calls} || echo 0)
             echo -e "peaks\\t$PEAK_COUNT" > {output.stats}
-            
+
             TOTAL_READS=$(samtools idxstats {input.bam} 2>/dev/null | awk '{{sum += $3}}END{{print sum+0}}' || echo "0")
-            
+
             if [ "$TOTAL_READS" -gt 0 ] 2>/dev/null; then
                 FRIP=$(samtools view -c -L {input.peak_calls} {input.bam} 2>/dev/null | \
                     awk -v total=$TOTAL_READS '{{if(NF>0) print $1/total; else print 0}}' || echo "0")
                 echo -e "frip\\t$FRIP" >> {output.stats}
-                
+
                 REGULATORY_FRAC=$(samtools view -c -L {input.regulatory_regions} {input.bam} 2>/dev/null | \
                     awk -v total=$TOTAL_READS '{{if(NF>0) print $1/total; else print 0}}' || echo "0")
                 echo -e "regulatory_fraction\\t$REGULATORY_FRAC" >> {output.stats}
@@ -425,7 +496,7 @@ rule peak_annotation:
             echo -e "frip\\t0" >> {output.stats}
             echo -e "regulatory_fraction\\t0" >> {output.stats}
         fi
-        
+
         if [ ! -f {output.homer_knownResults} ]; then
             touch {output.homer_knownResults}
         fi
@@ -454,7 +525,7 @@ rule tracks:
     shell:
         """
         set -euo pipefail
-        
+
         mkdir -p $(dirname {output.bw})
         bamCoverage -b {input.bam} -o {output.bw} \
             --binSize 10 --smoothLength 50 --normalizeUsing CPM \

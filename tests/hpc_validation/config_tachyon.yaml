@@ -1,0 +1,11 @@
+project:
+  out_dir: /storage/zhangkaiLab/hanlitian/macrophage/validation/20260723_tachyon_backend/results/atac/tachyon
+  pep_config: /storage/zhangkaiLab/hanlitian/macrophage/validation/20260723_tachyon_backend/code/ATAC-sm/tests/hpc_validation/project_config.yaml
+
+alignment:
+  backend: tachyon_upstream
+  prealign:
+    enabled: false
+  tachyon_upstream:
+    executable: /storage/zhangkaiLab/hanlitian/macrophage/validation/20260723_tachyon_backend/bin/tachyon-upstream
+    adapter: nextera

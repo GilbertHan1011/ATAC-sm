@@ -69,3 +69,38 @@ and validate the change on real data.
 | TSS coverage aborted because the retained BAM has reads on random contigs absent from the TSS BED | Stream only contigs present in the slopped TSS BED from the indexed BAM, retaining memory-efficient `bedtools -sorted`. |
 | First direct strict-remap control used 12 BWA threads while pipeline alignment uses 6 | Rerun the control with the exact pipeline thread count and process-substitution FASTQ input before comparing records. |
 | Standalone validation copy lacked its project HOMER installation | The actual HPC checkout at `/storage/zhangkaiLab/hanlitian/macrophage/script/ATAC-sm` includes HOMER and its complete `rule all --dry-run` succeeds. The all-sample formal BAM dry-run in the validation copy also resolves 59 jobs: 22 fastp, 18 prealign, 18 align, and one BWA index. |
+
+---
+
+# Optional Tachyon-Upstream Backend Plan
+
+## Goal
+
+Add an opt-in `alignment.backend: tachyon_upstream` that replaces only raw
+paired FASTQ preprocessing and alignment with the pinned
+`/home/gilberthan/disk1/projects/tachyon_upstream` executable. Keep `legacy`
+as the default and preserve the canonical filtered BAM/BAI contract for every
+existing downstream rule.
+
+## Implementation phases
+
+1. Add static contract tests for backend selection, canonical outputs, ordered
+   paired raw inputs, and explicit rejection of Tachyon with chrM prealignment. — complete
+2. Add the smallest producer branch: raw FASTQs -> Tachyon -> canonical BAM,
+   BAI, native UCF side output, and stats JSON. Do not change downstream QC. — complete
+3. Run local legacy/tachyon dry-run, rulegraph, summary, lint, and fixture
+   producer smoke checks. — local parse and fixture smoke complete; full local
+   DAG remains blocked by HPC-only reference/sample metadata.
+4. Completed pilot on HPC: compare isolated legacy-no-prealign and Tachyon
+   output roots. Expanded validation remains required before promotion.
+
+## Acceptance gates
+
+- Tachyon DAG schedules no fastp, prealign, legacy alignment, or samblaster.
+- Both branches produce a mapped-only, coordinate-sorted, indexed canonical BAM.
+- Existing peak, track, TSS, FRiP, ATAQV, quantification, and reproducibility
+  rules consume unchanged canonical paths.
+- Real-data validation compares ATAC against legacy with chrM prealignment
+  disabled; chrM prealignment remains a separate descriptive policy arm.
+- Promotion stays opt-in until the HPC pilot and expanded cohort meet the
+  documented mapping, fragment, peak, track, and QC agreement gates.

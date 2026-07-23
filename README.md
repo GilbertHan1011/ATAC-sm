@@ -83,8 +83,14 @@ project:
 #### Alignment Configuration
 ```yaml
 alignment:
+  backend: legacy  # "legacy" or "tachyon_upstream"
   tool: bwa-mem2  # or "bowtie2"
   sequencing_platform: illumina
+
+  # Used only when backend: tachyon_upstream
+  tachyon_upstream:
+    executable: /home/gilberthan/disk1/projects/tachyon_upstream/target/release/tachyon-upstream
+    adapter: nextera
   
   # Optional prealignment (e.g., filter mitochondrial reads)
   prealign:
@@ -103,6 +109,13 @@ alignment:
   bowtie2:
     index: "{database_dir}/hg38/indices_for_Bowtie2/hg38"
 ```
+
+`legacy` remains the default. `tachyon_upstream` replaces fastp, optional
+prealignment, alignment, duplicate marking, and indexing with one paired-end
+Tachyon command that writes the same canonical BAM/BAI paths plus a native UCF
+side output. It requires `prealign.enabled: false` and a newly built Tachyon
+executable with `--bam` and `--ucf` support; downstream QC and peak rules stay
+unchanged.
 
 #### Peak Calling Configuration
 ```yaml

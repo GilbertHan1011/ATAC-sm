@@ -26,10 +26,19 @@ alignment:
   tool: bwa-mem2  # Options: "bowtie2" or "bwa-mem2"
   sequencing_platform: illumina
   local_mode: true # If use bowtie2, this is necessary.
-  
+
+  # Opt-in optional backend. Legacy keeps bwa-mem2 -> samblaster -> canonical BAM.
+  # tachyon_upstream reads raw paired FASTQs end-to-end via the pinned Tachyon
+  # executable and writes the canonical BAM/BAI + a native UCF side output.
+  backend: tachyon_upstream
+  tachyon_upstream:
+    executable: /home/gilberthan/disk1/projects/tachyon_upstream/target/release/tachyon-upstream
+    adapter: nextera
+
   # Pre-alignment (Optional: e.g. filter chrM first)
+  # Must be disabled for the Tachyon backend (Tachyon does not prealign).
   prealign:
-    enabled: true
+    enabled: false
     indices:
       - name: chrM
         path: "{database_dir}/hg38_rcrds/rcrds"
@@ -107,4 +116,3 @@ refs:
   # GTF Annotations
   gencode_gtf: "{database_dir}/hg38/gencode.v38.basic.annotation.gtf"
   regulatory_gtf: "{database_dir}/hg38/homo_sapiens.GRCh38.Regulatory_Build.regulatory_features.20210107.gtf"
-

@@ -1,6 +1,6 @@
 pep_version: "2.0.0"
 project_name: atac_reference_validation
-sample_table: ../config/annotation.csv
+sample_table: annotation.csv
 
 paths:
   data_dir: /storage/zhangkaiLab/resource/Collaborators/Hanjie_Li/ATAC-seq

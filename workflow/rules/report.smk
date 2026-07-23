@@ -7,16 +7,49 @@ prealign_enabled = config["alignment"].get("prealign", {}).get("enabled", True)
 prealignments = config["alignment"].get("prealign", {}).get("indices", []) or []
 has_prealignments = prealign_enabled and len(prealignments) > 0
 
+# Resolved after processing.smk has run; defaults to legacy if processing.smk
+# did not define it (e.g., a partial include).
+ALIGNMENT_BACKEND = config["alignment"].get("backend", "legacy")
+
+# When Tachyon produces the canonical BAM, the legacy producer inputs are not
+# available, so the legacy-only MultiQC inputs are dropped instead of pointing
+# at fabricated files.
+_legacy_only_inputs = (
+    ALIGNMENT_BACKEND == "tachyon_upstream"
+)
+_fastp_html = [] if _legacy_only_inputs else expand(
+    os.path.join(result_path, 'report', 'fastp', '{sample_run}_fastp.html'),
+    sample_run=annot.index.tolist(),
+)
+_fastp_json = [] if _legacy_only_inputs else expand(
+    os.path.join(result_path, 'report', 'fastp', '{sample_run}_fastp.json'),
+    sample_run=annot.index.tolist(),
+)
+_aligner_log = [] if _legacy_only_inputs else expand(
+    os.path.join(result_path, 'report', 'align', '{sample}.' + _ALIGNER_LOG_SUFFIX),
+    sample=samples.keys(),
+)
+_samblaster_log = [] if _legacy_only_inputs else expand(
+    os.path.join(result_path, 'report', 'align', '{sample}.samblaster.log'),
+    sample=samples.keys(),
+)
+_flagstat_log = [] if _legacy_only_inputs else expand(
+    os.path.join(result_path, 'report', 'align', '{sample}.samtools_flagstat.log'),
+    sample=samples.keys(),
+)
+
 rule multiqc:
     input:
-        # collect fastp report from all runs (sample_run format)
-        expand(os.path.join(result_path, 'report', 'fastp', '{sample_run}_fastp.html'), sample_run=annot.index.tolist()),
-        expand(os.path.join(result_path, 'report', 'fastp', '{sample_run}_fastp.json'), sample_run=annot.index.tolist()),
+        # Legacy-only inputs (fastp reports + legacy aligner logs). Under
+        # alignment.backend='tachyon_upstream' these expand to [] so the DAG
+        # closes without depending on missing files.
+        _fastp_html,
+        _fastp_json,
         # Collect per-sample stats and logs for MultiQC
         expand(os.path.join(result_path, 'report', 'align_stats', '{sample}.align.stats.tsv'), sample=samples.keys()),
-        expand(os.path.join(result_path, 'report', 'align', '{sample}.' + _ALIGNER_LOG_SUFFIX), sample=samples.keys()),
-        expand(os.path.join(result_path, 'report', 'align', '{sample}.samblaster.log'), sample=samples.keys()),
-        expand(os.path.join(result_path, 'report', 'align', '{sample}.samtools_flagstat.log'), sample=samples.keys()),
+        _aligner_log,
+        _samblaster_log,
+        _flagstat_log,
         expand(os.path.join(result_path, 'report', 'tss_coverage', '{sample}.tss_histogram.csv'), sample=samples.keys()),
         sample_annotation = annotation_sheet_path,
         # Collect prealign stats if enabled (per sample, since prealignment now happens at sample level)

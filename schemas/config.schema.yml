@@ -51,6 +51,24 @@ properties:
               properties:
                 name: {type: string}
                 path: {type: string}
+
+      # Optional alignment producer backend.
+      # legacy:      bwa-mem2/bowtie2 -> samblaster -> samtools -> canonical BAM
+      # tachyon_upstream: pinned /home/gilberthan/disk1/projects/tachyon_upstream
+      #                   executable reads raw paired FASTQs end-to-end and
+      #                   writes the canonical BAM/BAI + a native UCF side output.
+      backend:
+        type: string
+        enum: ["legacy", "tachyon_upstream"]
+        default: "legacy"
+
+      tachyon_upstream:
+        type: object
+        properties:
+          executable: {type: string}
+          adapter:
+            type: string
+            enum: ["illumina", "nextera", "bgi", "none"]
       
       bwa:
         type: object

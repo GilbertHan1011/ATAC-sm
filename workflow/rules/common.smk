@@ -79,6 +79,22 @@ def get_all_fastqs_for_sample(sample_name):
                str(u["R2"]) if not pd.isna(u["R2"]) else None
     return _get_fastqs_for_sample(sample_name, _raw_path_func)
 
+def get_paired_raw_fastqs_for_sample(sample_name):
+    r1s, r2s = [], []
+    for run in get_runs_for_sample(sample_name):
+        unit = annot.loc[run]
+        r1 = expand_pep_path(unit["R1"])
+        r2 = expand_pep_path(unit["R2"])
+        if not r1 or not r2:
+            raise ValueError(
+                f"Tachyon requires paired R1/R2 FASTQs; {sample_name!r} run {run!r} is incomplete."
+            )
+        r1s.append(r1)
+        r2s.append(r2)
+    if not r1s:
+        raise ValueError(f"Tachyon requires at least one paired FASTQ run for {sample_name!r}.")
+    return r1s, r2s
+
 def get_quantifications(wildcards):
     """Refactored to avoid if/else block"""
     supported_kinds = ["support", "consensus", "promoter", "TSS"]

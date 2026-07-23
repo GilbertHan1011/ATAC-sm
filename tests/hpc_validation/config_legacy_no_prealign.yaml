@@ -1,0 +1,8 @@
+project:
+  out_dir: /storage/zhangkaiLab/hanlitian/macrophage/validation/20260723_tachyon_backend/results/atac/legacy_no_prealign
+  pep_config: /storage/zhangkaiLab/hanlitian/macrophage/validation/20260723_tachyon_backend/code/ATAC-sm/tests/hpc_validation/project_config.yaml
+
+alignment:
+  backend: legacy
+  prealign:
+    enabled: false
